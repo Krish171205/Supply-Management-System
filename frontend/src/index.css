@@ -100,3 +100,13 @@ h6 {
     margin-top: 0;
     font-weight: 600;
 }
+
+/* Custom Checkbox (Global) */
+.custom-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    accent-color: #3C6E69;
+    border-radius: 4px;
+    vertical-align: middle;
+}

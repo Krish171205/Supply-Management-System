@@ -147,7 +147,7 @@ const Footer = ({ userRole = 'admin' }) => {
                 {/* Copyright */}
                 <div style={styles.copyrightSection}>
                     <p style={styles.copyright}>
-                        <strong>© 2021 | Krisba Healthcare Pvt. Ltd.</strong>
+                        <strong>© 2025 | Krisba Healthcare Pvt. Ltd.</strong>
                     </p>
                 </div>
             </div>

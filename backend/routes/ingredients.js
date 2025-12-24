@@ -86,7 +86,7 @@ router.get('/:id/suppliers', authMiddleware, async (req, res) => {
 // Create ingredient (admin only)
 router.post('/', authMiddleware, adminOnly, async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, brands, unit } = req.body;
 
     if (!name) {
       return res.status(400).json({ message: 'Ingredient name is required' });
@@ -97,7 +97,11 @@ router.post('/', authMiddleware, adminOnly, async (req, res) => {
       return res.status(400).json({ message: 'Ingredient already exists' });
     }
 
-    const ingredient = await Ingredient.create({ name });
+    const ingredient = await Ingredient.create({
+      name,
+      brands: brands || [],
+      unit: unit || 'kg'
+    });
 
     res.status(201).json({
       message: 'Ingredient created successfully',
@@ -118,9 +122,11 @@ router.put('/:id', authMiddleware, adminOnly, async (req, res) => {
       return res.status(404).json({ message: 'Ingredient not found' });
     }
 
-    const { name } = req.body;
+    const { name, brands, unit } = req.body;
 
     if (name) ingredient.name = name;
+    if (brands) ingredient.brands = brands;
+    if (unit) ingredient.unit = unit;
 
     await ingredient.save();
 

@@ -8,7 +8,8 @@ function SupplierProfile({ user }) {
     email: '',
     phone: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    additional_emails: []
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -29,7 +30,8 @@ function SupplierProfile({ user }) {
         email: userData.email || '',
         phone: userData.phone || '',
         password: '',
-        confirmPassword: ''
+        confirmPassword: '',
+        additional_emails: userData.additional_emails || []
       });
     } catch (err) {
       setError(err.response?.data?.message || 'Error fetching profile');
@@ -56,7 +58,8 @@ function SupplierProfile({ user }) {
       const userUpdate = {
         name: formData.name,
         email: formData.email,
-        phone: formData.phone
+        phone: formData.phone,
+        additional_emails: formData.additional_emails
       };
       if (formData.password) {
         if (formData.password !== formData.confirmPassword) {
@@ -132,6 +135,43 @@ function SupplierProfile({ user }) {
                 disabled={loading}
                 required
               />
+            </div>
+
+            <div className="form-group">
+              <label>Additional Emails</label>
+              {formData.additional_emails.map((email, index) => (
+                <div key={index} style={{ display: 'flex', gap: '10px', marginBottom: '5px', alignItems: 'center' }}>
+                  <input
+                    style={{ flex: 1 }}
+                    type="email"
+                    value={email}
+                    onChange={(e) => {
+                      const newEmails = [...formData.additional_emails];
+                      newEmails[index] = e.target.value;
+                      setFormData(prev => ({ ...prev, additional_emails: newEmails }));
+                    }}
+                    placeholder="Additional Email"
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-small btn-danger"
+                    style={{ width: '30px', height: '30px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}
+                    onClick={() => {
+                      const newEmails = formData.additional_emails.filter((_, i) => i !== index);
+                      setFormData(prev => ({ ...prev, additional_emails: newEmails }));
+                    }}
+                  >
+                    X
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="btn btn-small btn-secondary"
+                onClick={() => setFormData(prev => ({ ...prev, additional_emails: [...prev.additional_emails, ''] }))}
+              >
+                + Add Email
+              </button>
             </div>
           </div>
 

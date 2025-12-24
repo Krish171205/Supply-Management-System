@@ -101,6 +101,7 @@ function Inquiries() {
               <label key={sup.id} style={{ display: 'block', marginTop: '8px' }}>
                 <input
                   type="checkbox"
+                  className="custom-checkbox"
                   checked={formData.supplierIds.includes(sup.id)}
                   onChange={(e) => {
                     if (e.target.checked) {

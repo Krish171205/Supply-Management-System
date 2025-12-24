@@ -22,6 +22,11 @@ router.get('/', authMiddleware, adminOnly, async (req, res) => {
     const { count, rows } = await User.findAndCountAll({
       where: whereClause,
       attributes: ['id', 'name', 'email', 'phone', 'is_active', 'created_at'],
+      include: [{
+        model: require('../models').Supplier,
+        as: 'supplierProfile',
+        attributes: ['payment_type']
+      }],
       offset,
       limit: parseInt(limit),
       order: [['created_at', 'DESC']]
@@ -103,19 +108,47 @@ router.post('/', authMiddleware, adminOnly, async (req, res) => {
       if (existing) return res.status(400).json({ message: 'Email already exists' });
     }
 
-    const user = await User.create({ name, email: email || null, phone: phone || null, role: 'supplier', hashed_password: password, is_active: true });
+    const user = await User.create({
+      name,
+      email: email || null,
+      phone: phone || null,
+      role: 'supplier',
+      hashed_password: password,
+      is_active: true,
+      additional_emails: req.body.additional_emails || []
+    });
 
     // Send test email if email is provided
     if (email) {
       try {
         const { sendTestEmail } = require('../config/email');
-        await sendTestEmail(email);
+
+        // Parse additional emails safely
+        let additional = req.body.additional_emails || [];
+        if (typeof additional === 'string') {
+          try { additional = JSON.parse(additional); } catch (e) { additional = []; }
+        }
+
+        const allEmails = [email, ...additional];
+        console.log('DEBUG: Sending welcome email (legacy route) to:', allEmails);
+
+        await sendTestEmail(allEmails);
       } catch (err) {
         console.error('Error sending supplier email:', err);
       }
     }
 
-    res.status(201).json({ message: 'Supplier user created', user: { id: user.id, name: user.name, email: user.email, phone: user.phone } });
+    // Create Supplier Profile
+    const { Supplier } = require('../models');
+    await Supplier.create({
+      user_id: user.id,
+      name: user.name,
+      contact_email: user.email,
+      phone: user.phone,
+      payment_type: req.body.payment_type || 'advance'
+    });
+
+    res.status(201).json({ message: 'Supplier user created', user: { id: user.id, name: user.name, email: user.email, phone: user.phone, payment_type: req.body.payment_type || 'advance' } });
   } catch (error) {
     console.error('Create supplier error:', error);
     res.status(500).json({ message: 'Error creating supplier', error: error.message });

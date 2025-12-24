@@ -15,34 +15,7 @@ const Quotes = sequelize.define('Quotes', {
       key: 'id'
     }
   },
-  ingredient_id: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: 'ingredients',
-      key: 'id'
-    }
-  },
-  supplier_user_id: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: 'users',
-      key: 'id'
-    }
-  },
-  price: {
-    type: DataTypes.DECIMAL(18, 4),
-    allowNull: false
-  },
-  accepted: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
-  },
-  amt: {
-    type: DataTypes.DECIMAL(18, 4),
-    allowNull: true
-  },
+  // ingredient_id, price, brands, amt moved to QuoteItem/OrderItem
   status: {
     type: DataTypes.STRING,
     defaultValue: 'quoted',

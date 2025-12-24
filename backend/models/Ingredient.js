@@ -12,6 +12,16 @@ const Ingredient = sequelize.define('Ingredient', {
     allowNull: false,
     unique: true
   },
+  brands: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: []
+  },
+  unit: {
+    type: DataTypes.ENUM('L', 'kg', 'units', 'pieces'),
+    allowNull: false,
+    defaultValue: 'kg'
+  },
   created_at: {
     type: DataTypes.DATE,
     allowNull: false,

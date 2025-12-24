@@ -27,77 +27,45 @@ async function seedDatabase() {
       is_active: true
     });
 
-    const supplier1 = await User.create({
-      name: 'ABC Supplies Ltd',
-      email: 'contact@abcsupplies.com',
-      phone: '4155552601',
+    const supplierKrish = await User.create({
+      name: 'krish',
+      email: 'krishbavishi2005@gmail.com',
+      phone: '9920081681',
       role: 'supplier',
-      hashed_password: 'supplier123',
+      hashed_password: '1234',
       is_active: true
     });
 
-    const supplier2 = await User.create({
-      name: 'XYZ Trading Co',
-      email: 'info@xyztrading.com',
-      phone: '4155552602',
-      role: 'supplier',
-      hashed_password: 'supplier123',
-      is_active: true
+    // Create Supplier profile for krish
+    const { Supplier } = require('./models');
+    await Supplier.create({
+      user_id: supplierKrish.id,
+      name: supplierKrish.name,
+      contact_email: supplierKrish.email,
+      phone: supplierKrish.phone,
+      address: '123 Test St, Test City',
+      payment_type: 'credit'
     });
 
     // Create ingredients
-    const ingredient1 = await Ingredient.create({ name: 'Wheat Flour' });
-    const ingredient2 = await Ingredient.create({ name: 'Sugar' });
-    const ingredient3 = await Ingredient.create({ name: 'Salt' });
+    const coffee = await Ingredient.create({
+      name: 'Coffee',
+      brands: ['Nescafe', 'Starbucks'],
+      unit: 'L'
+    });
 
     // Create supplier catalog entries
-    const catalogEntry1 = await SupplierCatalog.create({
-      ingredient_id: ingredient1.id,
-      supplier_user_id: supplier1.id,
-      price_hint: 40.5,
+    await SupplierCatalog.create({
+      ingredient_id: coffee.id,
+      supplier_user_id: supplierKrish.id,
+      price_hint: 50.0,
       available: true
-    });
-
-    const catalogEntry2 = await SupplierCatalog.create({
-      ingredient_id: ingredient1.id,
-      supplier_user_id: supplier2.id,
-      price_hint: 42.0,
-      available: true
-    });
-
-    const catalogEntry3 = await SupplierCatalog.create({
-      ingredient_id: ingredient2.id,
-      supplier_user_id: supplier1.id,
-      price_hint: 25.0,
-      available: true
-    });
-
-    // Create a sample inquiry
-    const inquiry = await Inquiry.create({
-      ingredient_id: ingredient1.id,
-      supplier_user_id: supplier1.id,
-      created_by: admin.id,
-      notes: 'Need 1000 kg of wheat flour',
-      status: 'open'
-    });
-
-    // Create a quote (supplier responds)
-    const quote = await Quotes.create({
-      inquiry_id: inquiry.id,
-      ingredient_id: ingredient1.id,
-      supplier_user_id: supplier1.id,
-      price: 41.0,
-      accepted: false,
-      status: 'quoted',
-      responded_by: supplier1.id,
-      responded_at: new Date()
     });
 
     console.log('✓ Database seeded successfully!');
     console.log('\nTest Credentials:');
     console.log('Admin: Name="Admin User", password="krisba@123"');
-    console.log('Supplier 1: Name="ABC Supplies Ltd", password="supplier123"');
-    console.log('Supplier 2: Name="XYZ Trading Co", password="supplier123"');
+    console.log('Supplier: Name="krish", Email="krishbavishi2005@gmail.com", password="1234"');
 
     process.exit(0);
   } catch (error) {

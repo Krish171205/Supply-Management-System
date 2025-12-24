@@ -7,11 +7,11 @@ const Order = sequelize.define('Order', {
     primaryKey: true,
     autoIncrement: true
   },
-  inquiry_id: {
+  quote_id: {
     type: DataTypes.INTEGER,
-    allowNull: false,
+    allowNull: true,
     references: {
-      model: 'inquiries',
+      model: 'quotes',
       key: 'id'
     }
   },
@@ -23,22 +23,7 @@ const Order = sequelize.define('Order', {
       key: 'id'
     }
   },
-  inquiry_response_id: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-    references: {
-      model: 'inquiry_responses',
-      key: 'id'
-    }
-  },
-  order_price: {
-    type: DataTypes.DECIMAL(12,2),
-    allowNull: true
-  },
-  quantity: {
-    type: DataTypes.DECIMAL(12,2),
-    allowNull: true
-  },
+  // inquiry_response_id, order_price, quantity removed
   placed_at: {
     type: DataTypes.DATE,
     allowNull: true

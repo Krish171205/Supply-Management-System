@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ingredientsAPI, suppliersAPI, catalogAPI } from '../../services/api';
+import MultiSelectDropdown from '../../components/Common/MultiSelectDropdown';
 import './Pages.css';
 
 function Vendors() {
@@ -12,16 +13,26 @@ function Vendors() {
   const [showForm, setShowForm] = useState(false);
 
   // Form states
-  const [formMode, setFormMode] = useState('existing'); // existing or create
-  const [selectedIngredient, setSelectedIngredient] = useState('');
-  const [selectedSupplier, setSelectedSupplier] = useState('');
-  const [newIngredientName, setNewIngredientName] = useState('');
+  // Form states
+  const [selectedIngredients, setSelectedIngredients] = useState([]); // Array of IDs
+  const [selectedSuppliers, setSelectedSuppliers] = useState([]); // Array of IDs
   const [newSupplierData, setNewSupplierData] = useState({
     name: '',
     email: '',
     phone: '',
-    password: ''
+    password: '',
+    additional_emails: [],
+    payment_type: 'advance'
   });
+
+  // New Ingredient Modal State
+  const [showNewIngredientModal, setShowNewIngredientModal] = useState(false);
+  const [newIngredientData, setNewIngredientData] = useState({
+    name: '',
+    brands: [],
+    unit: 'kg'
+  });
+  const [newBrandInput, setNewBrandInput] = useState('');
 
   // Lists
   const [ingredients, setIngredients] = useState([]);
@@ -57,21 +68,6 @@ function Vendors() {
     }
   };
 
-  const handleCreateIngredient = async () => {
-    if (!newIngredientName.trim()) {
-      setError('Ingredient name required');
-      return;
-    }
-    try {
-      await ingredientsAPI.create({ name: newIngredientName });
-      setNewIngredientName('');
-      setFormMode('existing');
-      await fetchAllData();
-    } catch (err) {
-      setError(err.response?.data?.message || 'Error creating ingredient');
-    }
-  };
-
   const handleCreateSupplier = async () => {
     // Client-side validation (field-level)
     const errs = {};
@@ -94,7 +90,7 @@ function Vendors() {
     try {
       const res = await suppliersAPI.createSupplier(newSupplierData);
       setCreatedSupplierCredentials(res.data.credentials);
-      setNewSupplierData({ name: '', email: '', phone: '', password: '' });
+      setNewSupplierData({ name: '', email: '', phone: '', password: '', additional_emails: [], payment_type: 'advance' });
       setTimeout(() => {
         setShowNewSupplierModal(false);
         setCreatedSupplierCredentials(null);
@@ -106,50 +102,75 @@ function Vendors() {
     }
   };
 
-  const handleAddEntry = async () => {
-    let ingredientId = selectedIngredient;
-    setError('');
-    if (formMode === 'existing') {
-      if (!ingredientId || !selectedSupplier) {
-        setError('Please select both ingredient and supplier');
-        return;
-      }
-    } else {
-      if (!newIngredientName || !selectedSupplier) {
-        setError('Ingredient name and supplier required');
-        return;
-      }
-      // Create ingredient first
-      try {
-        const ingRes = await ingredientsAPI.create({ name: newIngredientName });
-        ingredientId = ingRes.data.ingredient.id;
-        // Refresh ingredients and select the new one
-        const ingList = await ingredientsAPI.getAll('', 1, 1000);
-        setIngredients(ingList.data.ingredients || []);
-        setSelectedIngredient(ingredientId);
-        setFormMode('existing');
-        setNewIngredientName('');
-      } catch (err) {
-        setError(err.response?.data?.message || 'Error creating ingredient');
-        return;
-      }
+  const handleCreateIngredient = async () => {
+    if (!newIngredientData.name.trim()) {
+      setError('Ingredient name required');
+      return;
     }
 
     try {
+      await ingredientsAPI.create({
+        name: newIngredientData.name,
+        brands: newIngredientData.brands,
+        unit: newIngredientData.unit
+      });
+
+      setNewIngredientData({ name: '', brands: [], unit: 'kg' });
+      setNewBrandInput('');
+      setShowNewIngredientModal(false);
+      setError('');
+      fetchAllData(); // Refresh ingredients list
+    } catch (err) {
+      setError(err.response?.data?.message || 'Error creating ingredient');
+    }
+  };
+
+  const handleAddBrand = (e) => {
+    e.preventDefault();
+    if (newBrandInput.trim()) {
+      setNewIngredientData({
+        ...newIngredientData,
+        brands: [...newIngredientData.brands, newBrandInput.trim()]
+      });
+      setNewBrandInput('');
+    }
+  };
+
+  const handleRemoveBrand = (index) => {
+    const updatedBrands = newIngredientData.brands.filter((_, i) => i !== index);
+    setNewIngredientData({ ...newIngredientData, brands: updatedBrands });
+  };
+
+  const handleAddEntry = async () => {
+    setError('');
+
+    if (selectedSuppliers.length === 0) {
+      setError('Please select at least one supplier');
+      return;
+    }
+
+    if (selectedIngredients.length === 0) {
+      setError('Please select at least one ingredient');
+      return;
+    }
+
+    try {
+      // Send arrays to backend
       await catalogAPI.create({
-        ingredient_id: parseInt(ingredientId),
-        supplier_user_id: parseInt(selectedSupplier),
+        ingredient_id: selectedIngredients,
+        supplier_user_id: selectedSuppliers,
         price_hint: null,
         available: true
       });
-      setSelectedIngredient('');
-      setSelectedSupplier('');
-      setFormMode('existing');
+
+      // Reset form
+      setSelectedIngredients([]);
+      setSelectedSuppliers([]);
       setShowForm(false);
       await fetchAllData();
       setError('');
     } catch (err) {
-      setError(err.response?.data?.message || 'Error adding entry');
+      setError(err.response?.data?.message || 'Error adding entries');
     }
   };
 
@@ -200,9 +221,11 @@ function Vendors() {
     if (!search) return true;
     const ingredientName = entry.Ingredient?.name || '';
     const supplierName = entry.supplier?.name || '';
+    const brandsStr = (entry.Ingredient?.brands || []).join(' ');
     const searchLower = search.toLowerCase();
     return ingredientName.toLowerCase().includes(searchLower) ||
-      supplierName.toLowerCase().includes(searchLower);
+      supplierName.toLowerCase().includes(searchLower) ||
+      brandsStr.toLowerCase().includes(searchLower);
   });
 
   return (
@@ -217,6 +240,12 @@ function Vendors() {
             onClick={() => { setError(''); setFieldErrors({}); setShowNewSupplierModal(true); }}
           >
             Create New Supplier
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={() => { setError(''); setShowNewIngredientModal(true); }}
+          >
+            Create New Ingredient
           </button>
           <button
             className="btn btn-primary"
@@ -243,67 +272,105 @@ function Vendors() {
           )}
 
           <div className="form-group">
-            <label>Mode</label>
-            <select
-              value={formMode}
-              onChange={(e) => setFormMode(e.target.value)}
-            >
-              <option value="existing">Use Existing</option>
-              <option value="create">Create New Ingredient</option>
-            </select>
+            <label>Ingredients</label>
+            <MultiSelectDropdown
+              options={ingredients}
+              selectedIds={selectedIngredients}
+              onChange={setSelectedIngredients}
+              placeholder="Select Ingredients..."
+            />
           </div>
 
-          {formMode === 'existing' ? (
-            <div className="form-group">
-              <label>Ingredient</label>
-              <select
-                value={selectedIngredient}
-                onChange={(e) => setSelectedIngredient(e.target.value)}
-              >
-                <option value="">-- Select Ingredient --</option>
-                {ingredients.map(ing => (
-                  <option key={ing.id} value={ing.id}>{ing.name}</option>
-                ))}
-              </select>
-            </div>
-          ) : (
-            <div className="form-group">
-              <label>New Ingredient Name</label>
-              <input
-                type="text"
-                value={newIngredientName}
-                onChange={(e) => setNewIngredientName(e.target.value)}
-              />
-            </div>
-          )}
-
           <div className="form-group">
-            <label>Supplier</label>
-            <select
-              value={selectedSupplier}
-              onChange={(e) => setSelectedSupplier(e.target.value)}
-            >
-              <option value="">-- Select Supplier --</option>
-              {suppliers.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+            <label>Suppliers</label>
+            <MultiSelectDropdown
+              options={suppliers}
+              selectedIds={selectedSuppliers}
+              onChange={setSelectedSuppliers}
+              placeholder="Select Suppliers..."
+            />
           </div>
 
           <div style={{ display: 'flex', gap: '10px', marginTop: 12 }}>
             <button
               className="btn btn-primary"
               onClick={handleAddEntry}
-              disabled={
-                (formMode === 'existing' && (!selectedIngredient || !selectedSupplier)) ||
-                (formMode === 'create' && (!newIngredientName || !selectedSupplier))
-              }
+              disabled={selectedIngredients.length === 0 || selectedSuppliers.length === 0}
             >
-              Add Entry
+              Add Entries
             </button>
           </div>
+        </div>
+      )}
 
-          {/* New Supplier modal is rendered after the form-card to avoid nested JSX issues */}
+      {showNewIngredientModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3>Create New Ingredient</h3>
+            {error && <div className="alert alert-error">{error}</div>}
+
+            <div className="form-group">
+              <label>Name</label>
+              <input
+                type="text"
+                value={newIngredientData.name}
+                onChange={(e) => setNewIngredientData({ ...newIngredientData, name: e.target.value })}
+                placeholder="Ingredient Name"
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Measurement Unit</label>
+              <select
+                value={newIngredientData.unit}
+                onChange={(e) => setNewIngredientData({ ...newIngredientData, unit: e.target.value })}
+                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+              >
+                <option value="kg">kg</option>
+                <option value="L">L</option>
+                <option value="units">units</option>
+                <option value="pieces">pieces</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>Brands</label>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <input
+                  type="text"
+                  value={newBrandInput}
+                  onChange={(e) => setNewBrandInput(e.target.value)}
+                  placeholder="Enter brand name"
+                  onKeyPress={(e) => e.key === 'Enter' && handleAddBrand(e)}
+                />
+                <button type="button" className="btn btn-secondary" onClick={handleAddBrand}>Add</button>
+              </div>
+              <div className="brands-tags" style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                {newIngredientData.brands.map((brand, index) => (
+                  <span key={index} className="tag" style={{ background: '#e0e0e0', padding: '2px 8px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    {brand}
+                    <button type="button" onClick={() => handleRemoveBrand(index)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'red', fontWeight: 'bold' }}>×</button>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleCreateIngredient}
+                disabled={!newIngredientData.name}
+              >
+                Create
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => { setShowNewIngredientModal(false); setError(''); setNewIngredientData({ name: '', brands: [], unit: 'kg' }); }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -333,6 +400,42 @@ function Vendors() {
               {fieldErrors.email && <div className="field-error">{fieldErrors.email}</div>}
             </div>
             <div className="form-group">
+              <label>Additional Emails</label>
+              {newSupplierData.additional_emails.map((email, index) => (
+                <div key={index} style={{ display: 'flex', gap: '10px', marginBottom: '5px', alignItems: 'center' }}>
+                  <input
+                    style={{ flex: 1 }}
+                    type="email"
+                    value={email}
+                    onChange={(e) => {
+                      const newEmails = [...newSupplierData.additional_emails];
+                      newEmails[index] = e.target.value;
+                      setNewSupplierData({ ...newSupplierData, additional_emails: newEmails });
+                    }}
+                    placeholder="Additional Email"
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-small btn-danger"
+                    style={{ width: '30px', height: '30px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}
+                    onClick={() => {
+                      const newEmails = newSupplierData.additional_emails.filter((_, i) => i !== index);
+                      setNewSupplierData({ ...newSupplierData, additional_emails: newEmails });
+                    }}
+                  >
+                    X
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="btn btn-small btn-secondary"
+                onClick={() => setNewSupplierData({ ...newSupplierData, additional_emails: [...newSupplierData.additional_emails, ''] })}
+              >
+                + Add Email
+              </button>
+            </div>
+            <div className="form-group">
               <label>Phone</label>
               <input
                 className={fieldErrors.phone ? 'input-invalid' : ''}
@@ -351,6 +454,17 @@ function Vendors() {
                 onChange={(e) => { setNewSupplierData({ ...newSupplierData, password: e.target.value }); setFieldErrors({ ...fieldErrors, password: '' }); setError(''); }}
               />
               {fieldErrors.password && <div className="field-error">{fieldErrors.password}</div>}
+            </div>
+            <div className="form-group">
+              <label>Payment Type</label>
+              <select
+                value={newSupplierData.payment_type}
+                onChange={(e) => setNewSupplierData({ ...newSupplierData, payment_type: e.target.value })}
+                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+              >
+                <option value="advance">Advance</option>
+                <option value="credit">Credit</option>
+              </select>
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
@@ -403,9 +517,22 @@ function Vendors() {
             {filteredAndSortedEntries.length > 0 ? (
               filteredAndSortedEntries.map(entry => (
                 <tr key={entry.id}>
-                  <td>{entry.Ingredient?.name}</td>
+                  <td>
+                    {entry.Ingredient?.name}
+                    {entry.Ingredient?.brands && entry.Ingredient.brands.length > 0 && (
+                      <div style={{ fontSize: '0.8em', color: '#666' }}>
+                        {entry.Ingredient.brands.join(', ')}
+                      </div>
+                    )}
+
+                  </td>
                   <td>{entry.supplier?.name}</td>
-                  <td>{entry.supplier?.email}</td>
+                  <td>
+                    {entry.supplier?.email}
+                    {entry.supplier?.additional_emails && entry.supplier?.additional_emails.length > 0 && (
+                      <span>, {entry.supplier.additional_emails.join(', ')}</span>
+                    )}
+                  </td>
                   <td>{entry.supplier?.phone || '-'}</td>
                   <td>
                     <button

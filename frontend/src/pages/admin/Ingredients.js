@@ -8,7 +8,8 @@ function Ingredients() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({ name: '' });
+  const [formData, setFormData] = useState({ name: '', brands: [] });
+  const [newBrand, setNewBrand] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({});
 
@@ -30,13 +31,29 @@ function Ingredients() {
     }
   };
 
+  const handleAddBrand = (e) => {
+    e.preventDefault();
+    if (newBrand.trim()) {
+      setFormData({
+        ...formData,
+        brands: [...formData.brands, newBrand.trim()]
+      });
+      setNewBrand('');
+    }
+  };
+
+  const handleRemoveBrand = (index) => {
+    const updatedBrands = formData.brands.filter((_, i) => i !== index);
+    setFormData({ ...formData, brands: updatedBrands });
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
       await ingredientsAPI.create(formData);
-      setFormData({ name: '' });
+      setFormData({ name: '', brands: [] });
       setPage(1);
       await fetchIngredients();
       setShowForm(false);
@@ -86,6 +103,30 @@ function Ingredients() {
               disabled={loading}
             />
           </div>
+
+          <div className="form-group">
+            <label>Brands</label>
+            <div className="brand-input-group" style={{ display: 'flex', gap: '10px' }}>
+              <input
+                type="text"
+                value={newBrand}
+                onChange={(e) => setNewBrand(e.target.value)}
+                placeholder="Enter brand name"
+                disabled={loading}
+                onKeyPress={(e) => e.key === 'Enter' && handleAddBrand(e)}
+              />
+              <button type="button" className="btn btn-secondary" onClick={handleAddBrand}>Add</button>
+            </div>
+            <div className="brands-tags" style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+              {formData.brands.map((brand, index) => (
+                <span key={index} className="tag" style={{ background: '#e0e0e0', padding: '2px 8px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  {brand}
+                  <button type="button" onClick={() => handleRemoveBrand(index)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'red', fontWeight: 'bold' }}>×</button>
+                </span>
+              ))}
+            </div>
+          </div>
+
           <button type="submit" className="btn btn-primary" disabled={loading}>
             {loading ? 'Creating...' : 'Create'}
           </button>
@@ -111,6 +152,7 @@ function Ingredients() {
           <thead>
             <tr>
               <th>Name</th>
+              <th>Brands</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -119,6 +161,11 @@ function Ingredients() {
               ingredients.map((ingredient) => (
                 <tr key={ingredient.id}>
                   <td>{ingredient.name}</td>
+                  <td>
+                    {ingredient.brands && ingredient.brands.length > 0
+                      ? ingredient.brands.join(', ')
+                      : <span className="text-muted">No brands</span>}
+                  </td>
                   <td>
                     <button
                       className="btn btn-small btn-danger"

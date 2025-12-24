@@ -10,7 +10,7 @@ function Suppliers() {
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({});
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({ name: '', email: '', phone: '', password: '' });
+  const [formData, setFormData] = useState({ name: '', email: '', phone: '', password: '', additional_emails: [] });
   const [credentials, setCredentials] = useState(null);
 
   useEffect(() => {
@@ -37,7 +37,7 @@ function Suppliers() {
     try {
       const response = await authAPI.createSupplier(formData);
       setCredentials(response.data.credentials);
-      setFormData({ name: '', email: '', phone: '', password: '' });
+      setFormData({ name: '', email: '', phone: '', password: '', additional_emails: [] });
       setTimeout(() => {
         setShowForm(false);
         fetchSuppliers();
@@ -68,10 +68,10 @@ function Suppliers() {
 
       {credentials && (
         <div className="alert alert-success">
-          <strong>Supplier Created!</strong><br/>
-          Name: {credentials.name}<br/>
-          Email: {credentials.email}<br/>
-          Password: {credentials.password}<br/>
+          <strong>Supplier Created!</strong><br />
+          Name: {credentials.name}<br />
+          Email: {credentials.email}<br />
+          Password: {credentials.password}<br />
           <small>Please save these credentials and share with the supplier.</small>
         </div>
       )}
@@ -97,6 +97,42 @@ function Suppliers() {
               disabled={loading}
               required
             />
+          </div>
+          <div className="form-group">
+            <label>Additional Emails</label>
+            {formData.additional_emails.map((email, index) => (
+              <div key={index} style={{ display: 'flex', gap: '10px', marginBottom: '5px', alignItems: 'center' }}>
+                <input
+                  style={{ flex: 1 }}
+                  type="email"
+                  value={email}
+                  onChange={(e) => {
+                    const newEmails = [...formData.additional_emails];
+                    newEmails[index] = e.target.value;
+                    setFormData({ ...formData, additional_emails: newEmails });
+                  }}
+                  placeholder="Additional Email"
+                />
+                <button
+                  type="button"
+                  className="btn btn-small btn-danger"
+                  style={{ width: '30px', height: '30px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}
+                  onClick={() => {
+                    const newEmails = formData.additional_emails.filter((_, i) => i !== index);
+                    setFormData({ ...formData, additional_emails: newEmails });
+                  }}
+                >
+                  X
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="btn btn-small btn-secondary"
+              onClick={() => setFormData({ ...formData, additional_emails: [...formData.additional_emails, ''] })}
+            >
+              + Add Email
+            </button>
           </div>
           <div className="form-group">
             <label>Phone (optional)</label>
@@ -143,6 +179,9 @@ function Suppliers() {
             <div key={supplier.id} className="card">
               <h3>{supplier.name}</h3>
               <p><strong>Email:</strong> {supplier.email || '-'}</p>
+              {supplier.additional_emails && supplier.additional_emails.length > 0 && (
+                <p><strong>Other Emails:</strong> {supplier.additional_emails.join(', ')}</p>
+              )}
               <p><strong>Phone:</strong> {supplier.phone || '-'}</p>
               <p><strong>Role:</strong> {supplier.role}</p>
             </div>

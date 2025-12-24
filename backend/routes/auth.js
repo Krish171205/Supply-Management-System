@@ -122,6 +122,18 @@ router.post('/create-user', authMiddleware, adminOnly, async (req, res) => {
       is_active: true
     });
 
+    // Automatically create Supplier profile if role is supplier
+    if (role === 'supplier') {
+      const { Supplier } = require('../models');
+      await Supplier.create({
+        user_id: user.id,
+        name: user.name,
+        contact_email: user.email,
+        phone: user.phone,
+        address: 'N/A'
+      });
+    }
+
     res.status(201).json({
       message: 'User created successfully',
       user: {
@@ -156,7 +168,8 @@ router.get('/me', authMiddleware, async (req, res) => {
         phone: user.phone,
         role: user.role,
         is_active: user.is_active,
-        last_login: user.last_login
+        last_login: user.last_login,
+        additional_emails: user.additional_emails || []
       }
     });
   } catch (error) {
@@ -168,7 +181,7 @@ router.get('/me', authMiddleware, async (req, res) => {
 // Update user profile
 router.put('/profile', authMiddleware, async (req, res) => {
   try {
-    const { name, email, phone, password } = req.body;
+    const { name, email, phone, password, additional_emails } = req.body;
     const user = await User.findByPk(req.user.id);
 
     if (!user) {
@@ -180,6 +193,7 @@ router.put('/profile', authMiddleware, async (req, res) => {
     if (email) user.email = email;
     if (phone) user.phone = phone;
     if (password) user.hashed_password = password; // Will be hashed by the hook
+    if (additional_emails) user.additional_emails = additional_emails;
 
     await user.save();
 
@@ -190,7 +204,8 @@ router.put('/profile', authMiddleware, async (req, res) => {
         name: user.name,
         email: user.email,
         phone: user.phone,
-        role: user.role
+        role: user.role,
+        additional_emails: user.additional_emails || []
       }
     });
   } catch (error) {
@@ -201,9 +216,9 @@ router.put('/profile', authMiddleware, async (req, res) => {
 
 // Alias endpoint for frontend: create-supplier (admin only)
 router.post('/create-supplier', authMiddleware, adminOnly, async (req, res) => {
-    console.log('CREATE SUPPLIER REQUEST BODY:', req.body);
+  console.log('CREATE SUPPLIER REQUEST BODY:', req.body);
   try {
-    const { email, password, name, phone } = req.body;
+    const { email, password, name, phone, additional_emails } = req.body;
 
     // Validate inputs
     if (!email && !phone) {
@@ -236,14 +251,35 @@ router.post('/create-supplier', authMiddleware, adminOnly, async (req, res) => {
       phone: phone || null,
       role: 'supplier',
       hashed_password: password,
-      is_active: true
+      is_active: true,
+      additional_emails: additional_emails || []
+    });
+
+    // Create Supplier Profile
+    const { Supplier } = require('../models');
+    await Supplier.create({
+      user_id: user.id,
+      name: user.name,
+      contact_email: user.email,
+      phone: user.phone,
+      address: 'N/A' // Default address
     });
 
     // Send supplier credentials email if email is provided
     if (email) {
       try {
         const { sendTestEmail } = require('../config/email');
-        await sendTestEmail(email, { type: 'supplier', username: user.name, password });
+
+        // Parse additional emails safely
+        let additional = additional_emails || [];
+        if (typeof additional === 'string') {
+          try { additional = JSON.parse(additional); } catch (e) { additional = []; }
+        }
+
+        const allEmails = [email, ...additional];
+        console.log('DEBUG: Sending welcome email to:', allEmails);
+
+        await sendTestEmail(allEmails, { type: 'supplier', username: user.name, password });
       } catch (err) {
         console.error('Error sending supplier email:', err);
       }
@@ -261,7 +297,8 @@ router.post('/create-supplier', authMiddleware, adminOnly, async (req, res) => {
         name: user.name,
         email: user.email,
         phone: user.phone,
-        role: user.role
+        role: user.role,
+        additional_emails: user.additional_emails || []
       }
     });
   } catch (error) {

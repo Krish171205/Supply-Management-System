@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ordersAPI } from '../../services/api';
 import './Pages.css';
-import { formatNumber } from '../../utils/format';
+import { formatNumber, formatDate } from '../../utils/format';
 
 function AdminOrders() {
   const [placedOrders, setPlacedOrders] = useState([]);
@@ -12,31 +12,22 @@ function AdminOrders() {
   const [searchPlaced, setSearchPlaced] = useState('');
   const [searchShipped, setSearchShipped] = useState('');
   const [searchReceived, setSearchReceived] = useState('');
-  const [showMorePlaced, setShowMorePlaced] = useState(false);
-  const [showMoreShipped, setShowMoreShipped] = useState(false);
-  const [showMoreReceived, setShowMoreReceived] = useState(false);
-
-  const ITEMS_PER_PAGE = 5;
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   useEffect(() => {
     fetchAllOrders();
-  }, []);
+  }, [startDate, endDate]);
 
   const fetchAllOrders = async () => {
     setLoading(true);
     try {
-      // Fetch all quotes/orders
-      const res = await ordersAPI.getAdminAll('', 1, 1000);
-      const allOrders = res.data.data || [];
+      const res = await ordersAPI.getAdminAll('', 1, 1000, startDate, endDate);
+      const allOrders = res.data.orders || [];
 
-      // Filter by status
-      const placed = allOrders.filter(o => o.status === 'order_placed');
-      const shipped = allOrders.filter(o => o.status === 'order_shipped');
-      const received = allOrders.filter(o => o.status === 'order_received');
-
-      setPlacedOrders(placed);
-      setShippedOrders(shipped);
-      setReceivedOrders(received);
+      setPlacedOrders(allOrders.filter(o => o.status === 'order_placed'));
+      setShippedOrders(allOrders.filter(o => o.status === 'order_shipped'));
+      setReceivedOrders(allOrders.filter(o => o.status === 'order_received'));
       setError('');
     } catch (err) {
       setError(err.response?.data?.message || 'Error fetching orders');
@@ -54,104 +45,16 @@ function AdminOrders() {
     }
   };
 
-  const formatOrder = (order) => (
-    {
-      id: order.id,
-      ingredientName: order.Ingredient?.name || 'N/A',
-      supplierName: order.supplier?.name || 'N/A',
-      price: order.price,
-      amount: order.amt,
-      total: order.price && order.amt ? formatNumber(order.price * order.amt) : 'N/A',
-      status: order.status,
-      createdAt: new Date(order.created_at).toLocaleDateString(),
-      order: order
-    }
-  );
-
   const filterOrders = (orders, searchTerm) => {
-    return orders
-      .map(formatOrder)
-      .filter(o =>
-        `${o.ingredientName} ${o.supplierName}`.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-      .sort((a, b) => new Date(b.order.created_at) - new Date(a.order.created_at));
-  };
-
-  const filteredPlaced = filterOrders(placedOrders, searchPlaced);
-  const filteredShipped = filterOrders(shippedOrders, searchShipped);
-  const filteredReceived = filterOrders(receivedOrders, searchReceived);
-
-  const OrderTable = ({ title, orders, searchTerm, onSearch, onStatusChange, canChangeStatus, showMore, onToggleShowMore }) => {
-    const displayedOrders = showMore ? orders : orders.slice(0, ITEMS_PER_PAGE);
-
-    return (
-      <div style={{ marginBottom: '30px' }}>
-        <h2>{title.replace(/\s*\([^)]*\)/, '')}</h2>
-        <input
-          type="text"
-          className="search-compact"
-          placeholder="Search..."
-          value={searchTerm}
-          onChange={onSearch}
-          style={{ marginBottom: '20px' }}
-        />
-        <div className="table-container">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Ingredient</th>
-                <th>Supplier</th>
-                <th>Price</th>
-                <th>Amount</th>
-                <th>Total</th>
-                <th>Date</th>
-                {canChangeStatus && <th>Action</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {displayedOrders.length > 0 ? (
-                displayedOrders.map(o => (
-                  <tr key={o.id}>
-                    <td>{o.ingredientName}</td>
-                    <td>{o.supplierName}</td>
-                    <td>{formatNumber(o.price)}</td>
-                    <td>{formatNumber(o.amount)}</td>
-                    <td>{o.total}</td>
-                    <td>{o.createdAt}</td>
-                    {canChangeStatus && (
-                      <td>
-                        <button
-                          className="btn btn-small btn-primary"
-                          style={{ textTransform: 'none' }}
-                          onClick={() => onStatusChange(o.id, 'order_received')}
-                        >
-                          Mark Received
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={canChangeStatus ? 7 : 6} className="text-center">
-                    No orders
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        {orders.length > ITEMS_PER_PAGE && (
-          <button
-            className="btn btn-secondary"
-            onClick={onToggleShowMore}
-            style={{ marginTop: '10px' }}
-          >
-            {showMore ? '▲ Show Less' : '▼ Show More'}
-          </button>
-        )}
-      </div>
-    );
+    const lowerTerm = searchTerm.toLowerCase();
+    return orders.filter(o => {
+      const supplierMatch = o.Supplier?.User?.name.toLowerCase().includes(lowerTerm);
+      const itemMatch = o.OrderItems?.some(item =>
+        item.ingredient_name.toLowerCase().includes(lowerTerm) ||
+        item.brand.toLowerCase().includes(lowerTerm)
+      );
+      return supplierMatch || itemMatch;
+    });
   };
 
   return (
@@ -160,41 +63,130 @@ function AdminOrders() {
         <h1>Orders Management</h1>
       </div>
 
+      <div className="form-card" style={{ padding: '15px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-end' }}>
+          <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+            <label>Start Date</label>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+            <label>End Date</label>
+            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </div>
+          <button className="btn btn-secondary" onClick={() => { setStartDate(''); setEndDate(''); }} style={{ height: '42px' }}>
+            Clear
+          </button>
+        </div>
+      </div>
+
       {error && <div className="alert alert-error">{error}</div>}
       {loading && <p className="loading">Loading...</p>}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
         <OrderTable
-          title="Placed (Waiting for Shipment)"
-          orders={filteredPlaced}
+          title="Placed Orders"
+          orders={filterOrders(placedOrders, searchPlaced)}
           searchTerm={searchPlaced}
           onSearch={(e) => setSearchPlaced(e.target.value)}
           canChangeStatus={false}
-          showMore={showMorePlaced}
-          onToggleShowMore={() => setShowMorePlaced(!showMorePlaced)}
         />
         <OrderTable
-          title="Shipped (In Transit)"
-          orders={filteredShipped}
+          title="Shipped Orders"
+          orders={filterOrders(shippedOrders, searchShipped)}
           searchTerm={searchShipped}
           onSearch={(e) => setSearchShipped(e.target.value)}
           onStatusChange={handleStatusChange}
           canChangeStatus={true}
-          showMore={showMoreShipped}
-          onToggleShowMore={() => setShowMoreShipped(!showMoreShipped)}
+          statusActionLabel="Mark Received"
+          statusActionValue="order_received"
         />
         <OrderTable
-          title="Received (Completed)"
-          orders={filteredReceived}
+          title="Received Orders"
+          orders={filterOrders(receivedOrders, searchReceived)}
           searchTerm={searchReceived}
           onSearch={(e) => setSearchReceived(e.target.value)}
           canChangeStatus={false}
-          showMore={showMoreReceived}
-          onToggleShowMore={() => setShowMoreReceived(!showMoreReceived)}
         />
       </div>
     </div>
   );
 }
+
+const OrderTable = ({ title, orders, searchTerm, onSearch, onStatusChange, canChangeStatus, statusActionLabel, statusActionValue }) => (
+  <div>
+    <h2>{title}</h2>
+    <input
+      type="text"
+      className="search-compact"
+      placeholder="Search Supplier..."
+      value={searchTerm}
+      onChange={onSearch}
+      style={{ marginBottom: '20px' }}
+    />
+    <div className="table-container">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Order ID</th>
+            <th>Supplier</th>
+            <th>Ingredients</th>
+            <th>Quantity</th>
+            <th>Total Cost</th>
+            <th>Date</th>
+            {canChangeStatus && <th>Action</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {orders.length > 0 ? (
+            orders.map(order => {
+              const totalAmount = order.OrderItems?.reduce((sum, item) => sum + (item.quantity * item.price), 0) || 0;
+              return (
+                <tr key={order.id}>
+                  <td>#{order.id}</td>
+                  <td>{order.Supplier?.User?.name}</td>
+                  <td>
+                    {order.OrderItems?.map(item => (
+                      <div key={item.id} style={{ marginBottom: '8px' }}>
+                        <div style={{ marginBottom: '0px' }}>{item.ingredient_name}</div>
+                        {item.brand && (
+                          <div style={{ fontSize: '0.8em', color: '#666', marginTop: '0px' }}>
+                            {item.brand}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </td>
+                  <td>
+                    {order.OrderItems?.map(item => (
+                      <div key={item.id} style={{ marginBottom: '8px' }}>
+                        {item.quantity} {item.unit === 'unit' ? 'units' : item.unit}
+                        {/* Spacer to align with ingredient/brand block if needed, though simple list is usually fine */}
+                        {item.brand && <div style={{ height: '1.2em' }}></div>}
+                      </div>
+                    ))}
+                  </td>
+                  <td>{formatNumber(totalAmount)}</td>
+                  <td>{formatDate(order.placed_at)}</td>
+                  {canChangeStatus && (
+                    <td>
+                      <button
+                        className="btn btn-primary btn-small"
+                        onClick={() => onStatusChange(order.id, statusActionValue)}
+                      >
+                        {statusActionLabel}
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              );
+            })
+          ) : (
+            <tr><td colSpan={canChangeStatus ? 7 : 6} className="text-center">No orders found</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+);
 
 export default AdminOrders;

@@ -7,30 +7,7 @@ const Inquiry = sequelize.define('Inquiry', {
     primaryKey: true,
     autoIncrement: true
   },
-  ingredient_id: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: 'ingredients',
-      key: 'id'
-    }
-  },
-  supplier_user_id: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: 'users',
-      key: 'id'
-    }
-  },
-  created_by: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-    references: {
-      model: 'users',
-      key: 'id'
-    }
-  },
+  // ingredient_id, quantity, brands moved to InquiryItem
   notes: {
     type: DataTypes.TEXT,
     allowNull: true

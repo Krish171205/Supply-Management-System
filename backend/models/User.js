@@ -21,6 +21,11 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING,
     allowNull: true
   },
+  additional_emails: {
+    type: DataTypes.JSON, // Stores array of strings: ["email1@test.com", "email2@test.com"]
+    allowNull: true,
+    defaultValue: []
+  },
   role: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -62,7 +67,7 @@ const User = sequelize.define('User', {
 });
 
 // Verify password method
-User.prototype.verifyPassword = async function(password) {
+User.prototype.verifyPassword = async function (password) {
   return await bcrypt.compare(password, this.hashed_password);
 };
 

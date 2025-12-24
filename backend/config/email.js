@@ -10,19 +10,35 @@ const transporter = nodemailer.createTransport({
 });
 
 function sendTestEmail(to, details = {}) {
-  console.log('Attempting to send email to:', to);
+  // Handle array of emails or comma-separated string
+  let recipients = to;
+  if (Array.isArray(to)) {
+    recipients = to.join(', ');
+  }
+
+  console.log('Attempting to send email to:', recipients);
   console.log('Using Gmail user:', process.env.EMAIL_PASSWORD ? 'env password set' : 'no password');
   let text = 'email test';
   if (details.type === 'supplier') {
     text = `Welcome to Krisba!\nYour supplier account has been created.\nUsername: ${details.username}\nPassword: ${details.password}`;
   } else if (details.type === 'inquiry') {
-    text = `You have a new inquiry.\nIngredient: ${details.ingredient_name}\nNotes: ${details.notes || 'None'}`;
+    text = `You have a new inquiry.\nIngredient: ${details.ingredient_name}\nBrands: ${details.brands || 'Any'}\nQuantity: ${details.quantity} ${details.unit || ''}\nNotes: ${details.notes || 'None'}`;
+  } else if (details.type === 'inquiry_multi') {
+    const itemsList = details.items.map(item =>
+      `- ${item.name} (${item.quantity} ${item.unit || ''}) [Brands: ${item.brands}]`
+    ).join('\n');
+    text = `You have a new inquiry with multiple items:\n\n${itemsList}\n\nNotes: ${details.notes || 'None'}`;
   } else if (details.type === 'order') {
-    text = `You have a new order.\nIngredient: ${details.ingredient_name}\nPrice: ${details.price}\nQuantity: ${details.quantity}\nTotal: ${details.total}`;
+    text = `You have a new order.\nIngredient: ${details.ingredient_name}\nBrands: ${details.brands || 'Any'}\nPrice: ${details.price} per ${details.unit || 'unit'}\nQuantity: ${details.quantity} ${details.unit || ''}\nTotal: ${details.total}`;
+  } else if (details.type === 'order_multi') {
+    const itemsList = details.items.map(item =>
+      `- ${item.ingredient_name} (${item.brand}) | Qty: ${item.quantity} ${item.unit} | Price: ${item.price} | Total: ${item.total}`
+    ).join('\n');
+    text = `You have a new order (Order #${details.orderId}) with multiple items:\n\n${itemsList}\n\nTotal Order Value: ${details.grandTotal}\n\nPlease ship these items soon.`;
   }
   return transporter.sendMail({
     from: 'krishbavishi2005@gmail.com',
-    to,
+    to: recipients,
     subject: 'Krisba Notification',
     text
   }).then(info => {

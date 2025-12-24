@@ -105,7 +105,7 @@ export const catalogAPI = {
 // Inquiries API calls
 export const inquiriesAPI = {
   create: (data) =>
-    api.post('/inquiries', data),
+    api.post('/inquiries', data), // data: { ingredients: [], supplier_user_id: [] }
   getAll: (page = 1, limit = 20) =>
     api.get(`/inquiries?page=${page}&limit=${limit}`),
   getById: (id) =>
@@ -114,21 +114,28 @@ export const inquiriesAPI = {
     api.put(`/inquiries/${id}/status`, { status })
 };
 
-// Orders API calls
-export const ordersAPI = {
-  // Orders are represented by quotes in the canonical schema. Map order operations to quotes endpoints.
-  create: (inquiryId, price) =>
-    api.post('/quotes', { inquiry_id: inquiryId, price }),
-  getAdminAll: (status = '', page = 1, limit = 20) =>
-    api.get(`/quotes?status=${status}&page=${page}&limit=${limit}`),
-  getSupplierAll: (status = '', page = 1, limit = 20) =>
-    api.get(`/quotes?status=${status}&page=${page}&limit=${limit}`),
+// Quotes API calls
+export const quotesAPI = {
+  create: (data) =>
+    api.post('/quotes', data), // data: { inquiry_id, items: [] }
+  getAll: (startDate = '', endDate = '') =>
+    api.get(`/quotes?startDate=${startDate}&endDate=${endDate}`),
   getById: (id) =>
     api.get(`/quotes/${id}`),
+  accept: (id, selectedItems) =>
+    api.put(`/quotes/${id}/accept`, { selected_items: selectedItems }),
+  delete: (id) =>
+    api.delete(`/quotes/${id}`)
+};
+
+// Orders API calls
+export const ordersAPI = {
+  getAdminAll: (status = '', page = 1, limit = 20, startDate = '', endDate = '') =>
+    api.get(`/orders/admin/all?status=${status}&page=${page}&limit=${limit}&startDate=${startDate}&endDate=${endDate}`),
+  getSupplierAll: (status = '', page = 1, limit = 20, startDate = '', endDate = '') =>
+    api.get(`/orders/supplier/all?status=${status}&page=${page}&limit=${limit}&startDate=${startDate}&endDate=${endDate}`),
   update: (id, status) =>
-    api.put(`/quotes/${id}/status`, { status }),
-  accept: (id, amt) =>
-    api.put(`/quotes/${id}/accept`, { amt })
+    api.put(`/orders/${id}/status`, { status })
 };
 
 export default api;

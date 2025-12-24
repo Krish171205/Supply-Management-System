@@ -1,72 +1,59 @@
 import React, { useState, useEffect } from 'react';
-import { inquiriesAPI, ingredientsAPI, suppliersAPI, ordersAPI } from '../../services/api';
+import { inquiriesAPI, ingredientsAPI, suppliersAPI, quotesAPI } from '../../services/api';
 import './Pages.css';
-import { formatNumber } from '../../utils/format';
+import { formatNumber, formatDate } from '../../utils/format';
+
+import MultiSelectDropdown from '../../components/Common/MultiSelectDropdown';
+import Toast from '../../components/Common/Toast';
 
 function AdminInquiries() {
   const [sentInquiries, setSentInquiries] = useState([]);
-  const [receivedInquiries, setReceivedInquiries] = useState([]);
+  const [receivedQuotes, setReceivedQuotes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [searchSent, setSearchSent] = useState('');
   const [searchReceived, setSearchReceived] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [filterMode, setFilterMode] = useState('ingredient'); // ingredient or supplier
-  const [selectedIngredient, setSelectedIngredient] = useState('');
-  const [selectedSupplier, setSelectedSupplier] = useState('');
+  const [toast, setToast] = useState(null);
+
+  // Form State
+  const [selectedIngredient, setSelectedIngredient] = useState([]); // Array of IDs
+  const [selectedSupplier, setSelectedSupplier] = useState([]); // Array of IDs
+  const [selectedBrands, setSelectedBrands] = useState({}); // Map of ingredientId -> [brands]
+  const [selectedQuantities, setSelectedQuantities] = useState({}); // Map of ingredientId -> quantity
   const [ingredientOptions, setIngredientOptions] = useState([]);
   const [supplierOptions, setSupplierOptions] = useState([]);
   const [notes, setNotes] = useState('');
-  const [showAmountModal, setShowAmountModal] = useState(false);
-  const [selectedQuote, setSelectedQuote] = useState(null);
-  const [orderAmount, setOrderAmount] = useState('');
+
+  // Order Selection State (Map of quoteId -> [quoteItemId])
+  const [selectedOrderItems, setSelectedOrderItems] = useState({});
 
   useEffect(() => {
-    fetchAllInquiries();
+    fetchData();
     fetchOptions();
   }, []);
 
-  const fetchAllInquiries = async () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await inquiriesAPI.getAll(1, 1000);
-      const allInquiries = res.data.data || [];
+      // Fetch Sent Inquiries
+      const inqRes = await inquiriesAPI.getAll(1, 1000);
+      let inquiries = inqRes.data.data || [];
 
-      // Fetch all quotes once
-      const quotesRes = await ordersAPI.getAdminAll('', 1, 1000);
-      const allQuotes = quotesRes.data.data || [];
+      // Fetch Received Quotes
+      const quotesRes = await quotesAPI.getAll();
+      const quotes = quotesRes.data.data || [];
 
-      // Split into sent and received
-      const sent = [];
-      const received = [];
+      // Filter logic:
+      const quotedInquiryIds = new Set(quotes.map(q => q.inquiry_id));
+      const pendingInquiries = inquiries.filter(inq => !quotedInquiryIds.has(inq.id));
 
-      for (const inq of allInquiries) {
-        // Skip cancelled inquiries
-        if (inq.status === 'cancelled') {
-          continue;
-        }
+      setSentInquiries(pendingInquiries);
+      setReceivedQuotes(quotes);
 
-        // Check if this inquiry has a quote (response)
-        const quoteForInquiry = allQuotes.find(q => q.inquiry_id === inq.id);
-
-        if (quoteForInquiry) {
-          // Only show in received if quote is in 'quoted' status (not yet ordered)
-          // Once accepted, quote status becomes 'order_placed' and should not appear in received list
-          if (quoteForInquiry.status === 'quoted') {
-            received.push({ ...inq, quote: quoteForInquiry });
-          }
-          // Otherwise, quote has been accepted/ordered, so don't show in received
-        } else {
-          // No quote yet, show in sent
-          sent.push(inq);
-        }
-      }
-
-      setSentInquiries(sent);
-      setReceivedInquiries(received);
       setError('');
     } catch (err) {
-      setError(err.response?.data?.message || 'Error fetching inquiries');
+      setError(err.response?.data?.message || 'Error fetching data');
     } finally {
       setLoading(false);
     }
@@ -76,7 +63,6 @@ function AdminInquiries() {
     try {
       const ingRes = await ingredientsAPI.getAll('', 1, 1000);
       setIngredientOptions(ingRes.data.ingredients || []);
-
       const supRes = await suppliersAPI.getAll('', 1, 1000);
       setSupplierOptions(supRes.data.suppliers || []);
     } catch (err) {
@@ -86,95 +72,140 @@ function AdminInquiries() {
 
   const handleCreateInquiry = async (e) => {
     e.preventDefault();
-    if (filterMode === 'ingredient' && !selectedIngredient) {
-      setError('Please select an ingredient');
-      return;
-    }
-    if (filterMode === 'supplier' && (!selectedSupplier || !selectedIngredient)) {
-      setError('Please select both supplier and ingredient');
-      return;
+    if (selectedIngredient.length === 0) return setError('Select at least one ingredient');
+    if (selectedSupplier.length === 0) return setError('Select at least one supplier');
+
+    // Validate quantities
+    for (const ingId of selectedIngredient) {
+      const qty = selectedQuantities[ingId];
+      if (!qty || parseFloat(qty) <= 0) {
+        return setError(`Please enter a valid quantity greater than 0 for all ingredients`);
+      }
     }
 
     try {
-      if (filterMode === 'ingredient') {
-        // Get suppliers for this ingredient
-        const ingRes = await ingredientsAPI.getSuppliers(selectedIngredient);
-        const suppliers = ingRes.data.suppliers || [];
-        if (suppliers.length === 0) {
-          setError('No suppliers for this ingredient');
-          return;
-        }
-        // Create inquiries for all suppliers
-        for (const sup of suppliers) {
-          await inquiriesAPI.create({
-            ingredient_id: parseInt(selectedIngredient),
-            supplier_user_id: sup.id,
-            notes
-          });
-        }
-      } else {
-        // Create inquiry for specific supplier and ingredient
-        await inquiriesAPI.create({
-          ingredient_id: parseInt(selectedIngredient),
-          supplier_user_id: parseInt(selectedSupplier),
-          notes
-        });
-      }
+      const ingredientsPayload = selectedIngredient.map(id => ({
+        id,
+        brands: selectedBrands[id] || [],
+        quantity: selectedQuantities[id] || null
+      }));
 
-      setSelectedIngredient('');
-      setSelectedSupplier('');
+      await inquiriesAPI.create({
+        ingredients: ingredientsPayload,
+        supplier_user_id: selectedSupplier,
+        notes
+      });
+
+      // Reset form
+      setSelectedIngredient([]);
+      setSelectedSupplier([]);
+      setSelectedBrands({});
+      setSelectedQuantities({});
       setNotes('');
       setShowForm(false);
-      await fetchAllInquiries();
+      await fetchData();
     } catch (err) {
       setError(err.response?.data?.message || 'Error creating inquiry');
     }
   };
 
-  const handlePlaceOrder = async () => {
-    if (!orderAmount || isNaN(orderAmount) || orderAmount <= 0) {
-      setError('Please enter a valid amount');
-      return;
+
+
+  // Pre-select brands
+  useEffect(() => {
+    if (selectedIngredient.length > 0) {
+      const newBrands = { ...selectedBrands };
+      let changed = false;
+      selectedIngredient.forEach(ingId => {
+        if (!newBrands[ingId]) {
+          const ing = ingredientOptions.find(i => i.id === ingId);
+          if (ing && ing.brands && ing.brands.length > 0) {
+            newBrands[ingId] = ing.brands;
+            changed = true;
+          }
+        }
+      });
+      if (changed) setSelectedBrands(newBrands);
     }
+  }, [selectedIngredient, ingredientOptions]);
+
+  const toggleOrderItem = (quoteId, itemId) => {
+    setSelectedOrderItems(prev => {
+      const current = prev[quoteId] || [];
+      if (current.includes(itemId)) {
+        return { ...prev, [quoteId]: current.filter(id => id !== itemId) };
+      } else {
+        return { ...prev, [quoteId]: [...current, itemId] };
+      }
+    });
+  };
+
+  const handlePlaceOrder = async (quoteId) => {
+    const items = selectedOrderItems[quoteId] || [];
+    if (items.length === 0) return setToast({ message: 'Please select at least one item to order', type: 'error' });
+
     try {
-      await ordersAPI.accept(selectedQuote.id, parseFloat(orderAmount));
-      setShowAmountModal(false);
-      setOrderAmount('');
-      setSelectedQuote(null);
-      await fetchAllInquiries();
+      await quotesAPI.accept(quoteId, items);
+      // Force refresh data to remove the ordered quote from the list
+      await fetchData();
+      setSelectedOrderItems(prev => {
+        const newState = { ...prev };
+        delete newState[quoteId];
+        return newState;
+      });
+      setToast({ message: 'Order Placed Successfully', type: 'success' });
     } catch (err) {
-      setError(err.response?.data?.message || 'Error placing order');
+      setToast({ message: err.response?.data?.message || 'Error placing order', type: 'error' });
     }
   };
 
-  const handleCancelInquiry = async (inquiryId) => {
-    if (!window.confirm('Cancel this inquiry?')) return;
+  const handleRemoveQuote = async (quoteId) => {
+    if (!window.confirm('Are you sure you want to remove this quote? This action cannot be undone.')) return;
+
     try {
-      await inquiriesAPI.updateStatus(inquiryId, 'cancelled');
-      await fetchAllInquiries();
+      await quotesAPI.delete(quoteId);
+      await fetchData();
+      setToast({ message: 'Quote Removed Successfully', type: 'success' });
     } catch (err) {
-      setError(err.response?.data?.message || 'Error canceling inquiry');
+      setToast({ message: err.response?.data?.message || 'Error removing quote', type: 'error' });
     }
   };
 
+  // Filtering
   const filteredSent = sentInquiries.filter(inq => {
-    const text = `${inq.Ingredient?.name} ${inq.supplierUser?.name}`.toLowerCase();
-    return text.includes(searchSent.toLowerCase());
-  }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const searchLower = searchSent.toLowerCase();
+    const supplierMatch = inq.supplierUser?.name.toLowerCase().includes(searchLower);
+    const ingredientMatch = inq.InquiryItems?.some(item =>
+      item.Ingredient?.name.toLowerCase().includes(searchLower) ||
+      (item.brands && item.brands.some(b => b.toLowerCase().includes(searchLower)))
+    );
+    return supplierMatch || ingredientMatch;
+  });
 
-  const filteredReceived = receivedInquiries.filter(inq => {
-    const text = `${inq.Ingredient?.name} ${inq.supplierUser?.name}`.toLowerCase();
-    return text.includes(searchReceived.toLowerCase());
-  }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const filteredReceived = receivedQuotes.filter(q => {
+    if (q.status === 'order_placed') return false; // Filter out accepted quotes
+
+    const searchLower = searchReceived.toLowerCase();
+    const supplierMatch = q.supplier?.name.toLowerCase().includes(searchLower);
+    const itemMatch = q.QuoteItems?.some(item =>
+      item.InquiryItem?.Ingredient?.name.toLowerCase().includes(searchLower) ||
+      item.brand_name?.toLowerCase().includes(searchLower)
+    );
+    return supplierMatch || itemMatch;
+  });
 
   return (
     <div className="page-container">
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
       <div className="page-header">
         <h1>Inquiries Management</h1>
-        <button
-          className="btn btn-primary"
-          onClick={() => setShowForm(!showForm)}
-        >
+        <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
           {showForm ? 'Cancel' : '+ New Inquiry'}
         </button>
       </div>
@@ -186,187 +217,217 @@ function AdminInquiries() {
           <h3>Create Inquiry</h3>
           <form onSubmit={handleCreateInquiry}>
             <div className="form-group">
-              <label>Select By</label>
-              <select value={filterMode} onChange={(e) => setFilterMode(e.target.value)}>
-                <option value="ingredient">Ingredient (will send to all suppliers)</option>
-                <option value="supplier">Specific Supplier</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Ingredient</label>
-              <select
-                value={selectedIngredient}
-                onChange={(e) => setSelectedIngredient(e.target.value)}
-                required
-              >
-                <option value="">-- Select Ingredient --</option>
-                {ingredientOptions.map(ing => (
-                  <option key={ing.id} value={ing.id}>{ing.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {filterMode === 'supplier' && (
-              <div className="form-group">
-                <label>Supplier</label>
-                <select
-                  value={selectedSupplier}
-                  onChange={(e) => setSelectedSupplier(e.target.value)}
-                  required
-                >
-                  <option value="">-- Select Supplier --</option>
-                  {supplierOptions.map(sup => (
-                    <option key={sup.id} value={sup.id}>{sup.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <div className="form-group">
-              <label>Notes (optional)</label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
+              <label>Ingredients</label>
+              <MultiSelectDropdown
+                options={ingredientOptions}
+                selectedIds={selectedIngredient}
+                onChange={setSelectedIngredient}
+                placeholder="Select Ingredients"
               />
             </div>
 
-            <button type="submit" className="btn btn-primary">
-              Send Inquiry
-            </button>
+            {selectedIngredient.map(ingId => {
+              const ing = ingredientOptions.find(i => i.id === ingId);
+              if (!ing) return null;
+              const brandOptions = (ing.brands || []).map(b => ({ id: b, name: b }));
+
+              return (
+                <div key={ingId} style={{ marginLeft: '20px', borderLeft: '2px solid #eee', paddingLeft: '10px', marginBottom: '15px' }}>
+                  <h4>{ing.name}</h4>
+                  {ing.brands?.length > 0 && (
+                    <div className="form-group">
+                      <label>Brands</label>
+                      <MultiSelectDropdown
+                        options={brandOptions}
+                        selectedIds={selectedBrands[ingId] || []}
+                        onChange={(ids) => setSelectedBrands(prev => ({ ...prev, [ingId]: ids }))}
+                        placeholder="Select Brands"
+                      />
+                    </div>
+                  )}
+                  <div className="form-group">
+                    <label>Quantity ({ing.unit === 'unit' ? 'units' : (ing.unit || 'kg')})</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={selectedQuantities[ingId] || ''}
+                      onChange={(e) => setSelectedQuantities(prev => ({ ...prev, [ingId]: e.target.value }))}
+                      placeholder="Enter quantity"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+
+            <div className="form-group">
+              <label>Suppliers</label>
+              <MultiSelectDropdown
+                options={supplierOptions}
+                selectedIds={selectedSupplier}
+                onChange={setSelectedSupplier}
+                placeholder="Select Suppliers"
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Notes</label>
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+            </div>
+
+            <button type="submit" className="btn btn-primary">Send Inquiry</button>
           </form>
-        </div>
-      )}
-
-      {showAmountModal && selectedQuote && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h3>Place Order</h3>
-            <p>Quote Price: {formatNumber(selectedQuote.price)} per unit</p>
-            <div className="form-group">
-              <label>Amount (quantity/volume)</label>
-              <input
-                type="number"
-                value={orderAmount}
-                onChange={(e) => setOrderAmount(e.target.value)}
-                placeholder="Enter amount"
-                min="0"
-              />
-            </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button className="btn btn-primary" onClick={handlePlaceOrder} style={{ textTransform: 'none' }}>
-                Place Order
-              </button>
-              <button className="btn btn-secondary" onClick={() => {
-                setShowAmountModal(false);
-                setOrderAmount('');
-                setSelectedQuote(null);
-              }}>
-                Cancel
-              </button>
-            </div>
-          </div>
         </div>
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
         {/* Sent List */}
         <div>
-          <h2>Sent</h2>
+          <h2>Sent Inquiries</h2>
           <input
             type="text"
             className="search-compact"
-            placeholder="Search..."
+            placeholder="Search Supplier..."
             value={searchSent}
             onChange={(e) => setSearchSent(e.target.value)}
-            style={{ marginBottom: '20px' }}
+            style={{ marginBottom: '10px' }}
           />
           <div className="table-container">
             <table className="table">
               <thead>
                 <tr>
-                  <th>Ingredient</th>
                   <th>Supplier</th>
+                  <th>Ingredients</th>
+                  <th>Quantity</th>
                   <th>Date</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredSent.length > 0 ? (
                   filteredSent.map(inq => (
-                    <tr key={inq.id}>
-                      <td>{inq.Ingredient?.name}</td>
-                      <td>{inq.supplierUser?.name}</td>
-                      <td>{new Date(inq.created_at).toLocaleDateString()}</td>
-                    </tr>
+                    <React.Fragment key={inq.id}>
+                      {inq.InquiryItems?.map((item, idx) => {
+                        const isLastItem = idx === inq.InquiryItems.length - 1;
+                        return (
+                          <tr key={item.id}>
+                            {idx === 0 && (
+                              <td rowSpan={inq.InquiryItems.length} style={{ verticalAlign: 'middle' }}>
+                                {inq.supplierUser?.name}
+                              </td>
+                            )}
+                            <td style={{ borderBottom: isLastItem ? undefined : 'none' }}>
+                              {item.Ingredient?.name}
+                              {item.brands?.length > 0 && (
+                                <div style={{ color: '#666', fontSize: '0.9em' }}>
+                                  {item.brands.join(', ')}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ borderBottom: isLastItem ? undefined : 'none' }}>
+                              {item.quantity} {item.Ingredient?.unit === 'unit' ? 'units' : item.Ingredient?.unit}
+                            </td>
+                            {idx === 0 && (
+                              <td rowSpan={inq.InquiryItems.length} style={{ verticalAlign: 'middle' }}>
+                                {formatDate(inq.created_at)}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
                   ))
                 ) : (
-                  <tr>
-                    <td colSpan="3" className="text-center">No sent inquiries</td>
-                  </tr>
+                  <tr><td colSpan="4" className="text-center">No pending inquiries</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         </div>
 
-        {/* Received List */}
+        {/* Received Quotes */}
         <div>
-          <h2>Received</h2>
+          <h2>Received Quotes</h2>
           <input
             type="text"
             className="search-compact"
-            placeholder="Search..."
+            placeholder="Search Supplier..."
             value={searchReceived}
             onChange={(e) => setSearchReceived(e.target.value)}
-            style={{ marginBottom: '20px' }}
+            style={{ marginBottom: '10px' }}
           />
           <div className="table-container">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Ingredient</th>
-                  <th>Supplier</th>
-                  <th>Price</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredReceived.length > 0 ? (
-                  filteredReceived.map(inq => (
-                    <tr key={inq.id}>
-                      <td>{inq.Ingredient?.name}</td>
-                      <td>{inq.supplierUser?.name}</td>
-                      <td>{formatNumber(inq.quote?.price)}</td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-                          <button
-                            className="btn btn-small btn-primary"
-                            style={{ minWidth: '90px', textTransform: 'none' }}
-                            onClick={() => {
-                              setSelectedQuote(inq.quote);
-                              setShowAmountModal(true);
-                            }}
-                          >
-                            Order
-                          </button>
-                          <button
-                            className="btn btn-small btn-danger"
-                            style={{ minWidth: '90px', textTransform: 'none' }}
-                            onClick={() => handleCancelInquiry(inq.id)}
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="4" className="text-center">No received inquiries</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+            {filteredReceived.length > 0 ? (
+              filteredReceived.map(quote => (
+                <div key={quote.id} className="card" style={{ marginBottom: '15px', padding: '15px', border: '1px solid #ddd' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                    <strong>From: {quote.supplier?.name}</strong>
+                    <span>{formatDate(quote.created_at)}</span>
+                  </div>
+
+                  <table className="table" style={{ fontSize: '0.9em' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: '30px' }}></th>
+                        <th>Ingredient</th>
+                        <th>Brand</th>
+                        <th>Quantity</th>
+                        <th>Price</th>
+                        <th>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {quote.QuoteItems?.map(item => (
+                        <tr key={item.id} style={{ backgroundColor: item.is_nil ? '#f9f9f9' : 'white' }}>
+                          <td>
+                            {!item.is_nil && quote.status !== 'order_placed' && (
+                              <input
+                                type="checkbox"
+                                className="custom-checkbox"
+                                checked={(selectedOrderItems[quote.id] || []).includes(item.id)}
+                                onChange={() => toggleOrderItem(quote.id, item.id)}
+                              />
+                            )}
+                          </td>
+                          <td>{item.InquiryItem?.Ingredient?.name}</td>
+                          <td>{item.brand_name}</td>
+                          <td>{item.InquiryItem?.quantity} {item.InquiryItem?.Ingredient?.unit === 'unit' ? 'units' : item.InquiryItem?.Ingredient?.unit}</td>
+                          <td>{item.is_nil ? 'NIL' : formatNumber(item.price)}</td>
+                          <td>{item.is_nil ? '-' : formatNumber(item.price * item.InquiryItem?.quantity)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  <div style={{ marginTop: '10px', textAlign: 'right' }}>
+                    {quote.status === 'order_placed' ? (
+                      <span className="badge badge-success">Order Placed</span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-small"
+                        onClick={() => handlePlaceOrder(quote.id)}
+                        disabled={(selectedOrderItems[quote.id] || []).length === 0}
+                      >
+                        Place Order
+                      </button>
+                    )}
+                    {quote.status !== 'order_placed' && (
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-small"
+                        style={{ marginLeft: '10px' }}
+                        onClick={() => handleRemoveQuote(quote.id)}
+                      >
+                        REMOVE
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
+                No received quotes
+              </div>
+            )}
           </div>
         </div>
       </div>
